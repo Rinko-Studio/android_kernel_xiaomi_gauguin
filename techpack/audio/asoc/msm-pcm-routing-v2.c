@@ -30912,6 +30912,10 @@ void msm_routing_add_doa_control(struct snd_soc_component *component)
 }
 #endif
 
+#ifdef CONFIG_MSM_CSPL
+	extern void msm_crus_pb_add_controls(struct snd_soc_component *platform);
+#endif
+
 #ifndef CONFIG_TDM_DISABLE
 static void snd_soc_dapm_new_controls_tdm(struct snd_soc_component *component)
 {

@@ -90,7 +90,7 @@ ifneq (,$(filter $(TARGET_PRODUCT), draco))
 	CDEFINES += -DCONFIG_TARGET_PRODUCT_DRACO
 endif
 
-ifneq ($(CONFIG_MACH_XIAOMI_gauguin), y)
+ifneq ($(CONFIG_MACH_XIAOMI_GAUGUIN), y)
 	CDEFINES += -DCONFIG_AUDIO_SMARTPA_STEREO
 endif
 
@@ -104,7 +104,7 @@ CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
 		-Werror\
 		-D__linux__
 
-ifneq ($(filter gauguin,$(TARGET_PRODUCT)),)
+ifneq ($(CONFIG_MACH_XIAOMI_GAUGUIN), y)
 	CDEFINES += -DCONFIG_TARGET_SUPPORT_TDM
 endif
 

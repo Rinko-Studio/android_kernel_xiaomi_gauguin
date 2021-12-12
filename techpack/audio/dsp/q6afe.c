@@ -31,6 +31,7 @@
 #define AFE_CLK_TOKEN	1024
 
 #define SP_V4_NUM_MAX_SPKRS SP_V2_NUM_MAX_SPKRS
+#define MAX_LSM_SESSIONS 8
 
 struct afe_avcs_payload_port_mapping {
 	u16 port_id;
@@ -250,6 +251,7 @@ struct afe_ctl {
 	/* FTM spk params */
 	uint32_t initial_cal;
 	uint32_t v_vali_flag;
+	int lsm_afe_ports[MAX_LSM_SESSIONS];
 };
 
 struct afe_clkinfo_per_port {
@@ -303,6 +305,8 @@ bool afe_close_done[2] = {true, true};
 
 #define SIZEOF_CFG_CMD(y) \
 		(sizeof(struct apr_hdr) + sizeof(u16) + (sizeof(struct y)))
+
+static bool q6afe_is_afe_lsm_port(int port_id);
 
 static void q6afe_unload_avcs_modules(u16 port_id, int index)
 {
@@ -2583,6 +2587,16 @@ static void afe_send_cal_spv4_tx(int port_id)
 
 }
 
+afe_ultrasound_state_t elus_afe = {
+	.ptr_apr= &this_afe.apr,
+	.ptr_status= &this_afe.status,
+	.ptr_state= &this_afe.state,
+	.ptr_wait= this_afe.wait,
+	.ptr_afe_apr_lock= &this_afe.afe_apr_lock,
+	.timeout_ms= TIMEOUT_MS,
+};
+EXPORT_SYMBOL(elus_afe);
+
 static void afe_send_cal_spkr_prot_tx(int port_id)
 {
 	union afe_spkr_prot_config afe_spk_config;
@@ -2994,10 +3008,12 @@ static int afe_send_port_topology_id(u16 port_id)
 	}
 
 	ret = afe_get_cal_topology_id(port_id, &topology_id, AFE_TOPOLOGY_CAL);
-	if (ret < 0) {
-		pr_debug("%s: Check for LSM topology\n", __func__);
-		ret = afe_get_cal_topology_id(port_id, &topology_id,
-					      AFE_LSM_TOPOLOGY_CAL);
+	if (ret < 0 && q6afe_is_afe_lsm_port(port_id)) {
+		if (port_id >= AFE_PORT_ID_VA_CODEC_DMA_TX_0 && port_id <= AFE_PORT_ID_VA_CODEC_DMA_TX_2) {
+			pr_info("%s: Check for LSM topology\n", __func__);
+			ret = afe_get_cal_topology_id(port_id, &topology_id,
+							AFE_LSM_TOPOLOGY_CAL);
+		}
 	}
 	if (ret || !topology_id) {
 		pr_debug("%s: AFE port[%d] get_cal_topology[%d] invalid!\n",
@@ -3367,7 +3383,7 @@ void afe_send_cal(u16 port_id)
 	if (afe_get_port_type(port_id) == MSM_AFE_PORT_TYPE_TX) {
 		afe_send_cal_spkr_prot_tx(port_id);
 		ret = send_afe_cal_type(AFE_COMMON_TX_CAL, port_id);
-		if (ret < 0)
+		if (ret < 0 && q6afe_is_afe_lsm_port(port_id))
 			send_afe_cal_type(AFE_LSM_TX_CAL, port_id);
 	} else if (afe_get_port_type(port_id) == MSM_AFE_PORT_TYPE_RX) {
 		send_afe_cal_type(AFE_COMMON_RX_CAL, port_id);
@@ -10658,6 +10674,8 @@ int __init afe_init(void)
 	init_waitqueue_head(&this_afe.wait_wakeup);
 	init_waitqueue_head(&this_afe.lpass_core_hw_wait);
 	init_waitqueue_head(&this_afe.clk_wait);
+	for (i = 0; i < MAX_LSM_SESSIONS; i++)
+		this_afe.lsm_afe_ports[i] = 0xffff;
 	ret = afe_init_cal_data();
 	if (ret)
 		pr_err("%s: could not init cal data! %d\n", __func__, ret);
@@ -10865,3 +10883,30 @@ done:
 	return ret;
 }
 EXPORT_SYMBOL(afe_unvote_lpass_core_hw);
+
+static bool q6afe_is_afe_lsm_port(int port_id)
+{
+	int i = 0;
+
+	for (i = 0; i < MAX_LSM_SESSIONS; i++) {
+		if (port_id == this_afe.lsm_afe_ports[i])
+			return true;
+	}
+	return false;
+}
+
+/**
+ * afe_set_lsm_afe_port_id -
+ *            Update LSM AFE port
+ * idx: LSM port index
+* lsm_port: LSM port id
+*/
+void afe_set_lsm_afe_port_id(int idx, int lsm_port)
+{
+	if (idx < 0 || idx >= MAX_LSM_SESSIONS) {
+		pr_err("%s: %d Invalid lsm port index\n", __func__, idx);
+		return;
+	}
+	this_afe.lsm_afe_ports[idx] = lsm_port;
+}
+EXPORT_SYMBOL(afe_set_lsm_afe_port_id);
